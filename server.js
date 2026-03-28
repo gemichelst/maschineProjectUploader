@@ -448,6 +448,142 @@ app.get('/api/remotes', async (req, res) => {
   }
 });
 
+// ── GDrive OAuth Setup ────────────────────────────────────────────────────────
+let activeAuthProc = null;
+
+// POST /api/gdrive/setup — SSE stream: spawns rclone authorize, emits url → done
+app.post('/api/gdrive/setup', async (req, res) => {
+  const { remoteName = 'gdrive', scope = 'drive' } = req.body || {};
+
+  // Kill any stale auth session
+  if (activeAuthProc) { try { activeAuthProc.kill('SIGTERM'); } catch {} }
+
+  // SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const send = (event, data) => {
+    try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); if (res.flush) res.flush(); }
+    catch {}
+  };
+
+  send('status', { msg: 'Starting rclone authorization…', step: 1 });
+
+  // rclone authorize streams the auth URL + token to stdout/stderr
+  const proc = spawn('rclone', ['authorize', 'drive', `--drive-scope=${scope}`, '--auth-no-open-browser'], {
+    env: { ...process.env }
+  });
+  activeAuthProc = proc;
+
+  let tokenBuffer = '';
+  let urlSent = false;
+  let gotCode = false;
+
+  const parseLine = (line) => {
+    // URL extraction
+    if (!urlSent) {
+      const urlMatch = line.match(/https?:\/\/\S+/);
+      if (urlMatch) {
+        send('url', { url: urlMatch[0], msg: 'Authorization URL ready — opening your browser…' });
+        urlSent = true;
+        // Try to open browser automatically (macOS / Linux)
+        const opener = process.platform === 'darwin' ? 'open' :
+                        process.platform === 'win32'  ? 'start' : 'xdg-open';
+        exec(`${opener} "${urlMatch[0]}"`, () => {});
+      }
+    }
+    if (/waiting for code/i.test(line)) {
+      send('status', { msg: 'Waiting for Google authorization…', step: 2 });
+    }
+    if (/got code/i.test(line)) {
+      gotCode = true;
+      send('status', { msg: 'Authorization code received — saving config…', step: 3 });
+    }
+  };
+
+  proc.stderr.on('data', d => d.toString().split('\n').forEach(l => parseLine(l.trim())));
+  proc.stdout.on('data', d => { tokenBuffer += d.toString(); });
+
+  proc.on('close', async (code) => {
+    activeAuthProc = null;
+
+    if (code !== 0 && !gotCode) {
+      send('error', { msg: `rclone authorize exited (code ${code}) — is rclone installed?` });
+      res.end(); return;
+    }
+
+    // Extract JSON token from stdout (last JSON block)
+    const jsonMatch = tokenBuffer.match(/(\{[\s\S]*"access_token"[\s\S]*\})/);
+    if (!jsonMatch) {
+      send('error', { msg: 'Could not capture OAuth token from rclone output.' });
+      res.end(); return;
+    }
+
+    const tokenJson = jsonMatch[1].trim();
+
+    try {
+      // Check if remote already exists → update, else create
+      const { stdout: existing } = await execAsync('rclone listremotes 2>/dev/null');
+      const remoteTag = remoteName.replace(/:$/, '') + ':';
+      const cmd = existing.includes(remoteTag)
+        ? `rclone config update "${remoteName.replace(/:$/, '')}" token=${JSON.stringify(tokenJson)}`
+        : `rclone config create "${remoteName.replace(/:$/, '')}" drive scope=${scope} token=${JSON.stringify(tokenJson)}`;
+
+      await execAsync(cmd);
+
+      // Save remote name to app config
+      const cfg = loadConfig();
+      cfg.gdriveRemote = remoteName.replace(/:$/, '') + ':';
+      saveConfig(cfg);
+
+      send('done', {
+        remoteName: remoteName.replace(/:$/, '') + ':',
+        msg: `Google Drive remote "${remoteName.replace(/:$/, '')}" configured successfully!`
+      });
+    } catch (err) {
+      send('error', { msg: 'Config creation failed: ' + err.message });
+    }
+
+    res.end();
+  });
+
+  proc.on('error', (err) => {
+    activeAuthProc = null;
+    send('error', { msg: 'Failed to start rclone: ' + err.message + ' — make sure rclone is installed.' });
+    res.end();
+  });
+
+  // Clean up if client disconnects
+  req.on('close', () => {
+    if (activeAuthProc) { try { activeAuthProc.kill('SIGTERM'); } catch {} activeAuthProc = null; }
+  });
+});
+
+// Cancel active auth
+app.post('/api/gdrive/cancel', (req, res) => {
+  if (activeAuthProc) {
+    try { activeAuthProc.kill('SIGTERM'); } catch {}
+    activeAuthProc = null;
+    res.json({ ok: true });
+  } else {
+    res.json({ ok: false });
+  }
+});
+
+// Delete a remote from rclone config
+app.delete('/api/gdrive/remote/:name', async (req, res) => {
+  const name = req.params.name.replace(/:$/, '');
+  try {
+    await execAsync(`rclone config delete "${name}"`);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Start server ──────────────────────────────────────────────────────────────
 // Note: no host arg for Phusion Passenger compatibility
 app.listen(PORT, () => {

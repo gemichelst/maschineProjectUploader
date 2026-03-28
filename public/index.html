@@ -839,6 +839,124 @@ a:hover { text-decoration: underline; }
   to   { opacity: 0; transform: translateX(20px); }
 }
 
+/* ── GDrive Setup Modal ───────────────────────────────────────────────────── */
+.gdrive-modal-body { padding: 24px 24px 8px; }
+.gdrive-steps {
+  display: flex;
+  gap: 0;
+  margin-bottom: 24px;
+}
+.gdrive-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+}
+.gdrive-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 14px; left: 50%;
+  width: 100%; height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+.gdrive-step.done::after { background: var(--green); }
+.gdrive-step.active::after { background: linear-gradient(90deg, var(--accent), var(--border)); }
+.step-circle {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700;
+  color: var(--text-subtle);
+  position: relative; z-index: 1;
+  transition: all 0.3s var(--ease-out);
+}
+.gdrive-step.active .step-circle {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.gdrive-step.done .step-circle {
+  background: var(--green-dim);
+  border-color: var(--green);
+  color: var(--green);
+}
+.step-label {
+  font-size: 10px; margin-top: 6px;
+  color: var(--text-subtle);
+  text-align: center;
+  transition: color 0.3s;
+}
+.gdrive-step.active .step-label { color: var(--text-muted); }
+.gdrive-step.done  .step-label { color: var(--green); }
+
+.gdrive-panel { display: none; }
+.gdrive-panel.visible { display: block; }
+
+.gdrive-status-box {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.gdrive-spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+.gdrive-status-msg { font-size: 13px; color: var(--text-muted); }
+.gdrive-auth-btn {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  background: linear-gradient(135deg, #4285f4, #2563eb);
+  color: #fff;
+  font-size: 14px; font-weight: 600;
+  padding: 12px 20px;
+  border-radius: var(--r-md);
+  margin-bottom: 12px;
+  transition: all 0.15s;
+  justify-content: center;
+}
+.gdrive-auth-btn:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(66,133,244,0.4); }
+.gdrive-auth-btn:disabled { opacity: 0.5; transform: none; }
+
+.gdrive-success {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 12px; padding: 12px 0 8px; text-align: center;
+}
+.gdrive-success-icon { font-size: 40px; }
+.gdrive-success h3 { font-size: 16px; font-weight: 600; }
+.gdrive-success p { font-size: 13px; color: var(--text-muted); }
+
+.gdrive-error-box {
+  background: var(--red-dim);
+  border: 1px solid rgba(240,72,72,0.25);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  font-size: 13px; color: var(--red);
+  margin-bottom: 12px;
+}
+
+/* Configure button next to status dot */
+.btn-configure {
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: var(--r-sm);
+  background: var(--bg-card);
+  color: var(--text-subtle);
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+}
+.btn-configure:hover { color: var(--accent); border-color: var(--accent-border); }
+
 /* ── Dir Browser Modal ────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed; inset: 0;
@@ -980,6 +1098,7 @@ a:hover { text-decoration: underline; }
         <div class="dot"></div>
         <span>GDrive</span>
       </div>
+      <button class="btn-configure" onclick="openGDriveSetup()" title="Add or reconfigure Google Drive remote">⚙ Configure</button>
     </div>
 
     <div class="header-actions">
@@ -1279,6 +1398,93 @@ a:hover { text-decoration: underline; }
     </div>
   </main>
 
+</div>
+
+<!-- GDrive Setup Modal -->
+<div class="modal-overlay" id="gdrive-modal">
+  <div class="modal" style="width:500px;max-height:unset;">
+
+    <div class="modal-header">
+      <span class="modal-title">☁ Google Drive Setup</span>
+      <button class="btn btn-ghost btn-icon btn-sm" onclick="closeGDriveSetup()">✕</button>
+    </div>
+
+    <!-- Step indicator -->
+    <div style="padding:20px 24px 0;">
+      <div class="gdrive-steps">
+        <div class="gdrive-step active" id="gds-step-1">
+          <div class="step-circle" id="gds-circle-1">1</div>
+          <span class="step-label">Configure</span>
+        </div>
+        <div class="gdrive-step" id="gds-step-2">
+          <div class="step-circle" id="gds-circle-2">2</div>
+          <span class="step-label">Authorize</span>
+        </div>
+        <div class="gdrive-step" id="gds-step-3">
+          <div class="step-circle" id="gds-circle-3">3</div>
+          <span class="step-label">Done</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="gdrive-modal-body">
+
+      <!-- Panel 1: Configure -->
+      <div class="gdrive-panel visible" id="gdsp-1">
+        <div class="settings-field" style="margin-bottom:14px;">
+          <label class="settings-label">Remote Name</label>
+          <input type="text" class="settings-input" id="gds-name" value="gdrive" placeholder="gdrive">
+          <div class="settings-hint">The name used in rclone, e.g. <code style="color:var(--accent)">gdrive:</code></div>
+        </div>
+        <div class="settings-field" style="margin-bottom:18px;">
+          <label class="settings-label">Access Scope</label>
+          <select class="settings-select" id="gds-scope">
+            <option value="drive">Full Access — read/write all files</option>
+            <option value="drive.file">App Files Only — files created by rclone</option>
+            <option value="drive.readonly">Read Only</option>
+          </select>
+          <div class="settings-hint">For backup, Full Access is recommended.</div>
+        </div>
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md);padding:12px 14px;font-size:12px;color:var(--text-muted);margin-bottom:16px;line-height:1.7;">
+          🔐 <strong style="color:var(--text-primary);">What happens next:</strong><br>
+          rclone will open your browser to a Google sign-in page. After you approve, the token is saved automatically — no copy-pasting required.
+        </div>
+      </div>
+
+      <!-- Panel 2: Authorize -->
+      <div class="gdrive-panel" id="gdsp-2">
+        <div class="gdrive-status-box" id="gds-status-box">
+          <div class="gdrive-spinner" id="gds-spinner"></div>
+          <div class="gdrive-status-msg" id="gds-status-msg">Starting authorization…</div>
+        </div>
+        <button class="gdrive-auth-btn" id="gds-auth-btn" style="display:none;" onclick="openAuthUrl()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+          Open Google Authorization Page
+        </button>
+        <div id="gds-auth-hint" style="font-size:11px;color:var(--text-subtle);text-align:center;margin-bottom:14px;display:none;">
+          Browser didn't open automatically? Click the button above.
+        </div>
+        <div class="gdrive-error-box" id="gds-error-box" style="display:none;"></div>
+      </div>
+
+      <!-- Panel 3: Done -->
+      <div class="gdrive-panel" id="gdsp-3">
+        <div class="gdrive-success" id="gds-success">
+          <div class="gdrive-success-icon">✅</div>
+          <h3>Google Drive Connected</h3>
+          <p id="gds-success-msg">Remote configured successfully.</p>
+          <p style="font-size:11px;color:var(--text-subtle);">The new remote has been saved and selected as your upload destination.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="modal-footer" id="gds-footer">
+      <button class="btn btn-ghost btn-sm" id="gds-btn-cancel-setup" onclick="closeGDriveSetup()">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="gds-btn-next" onclick="gdsNext()">Start Setup →</button>
+    </div>
+
+  </div>
 </div>
 
 <!-- Directory Browser Modal -->
@@ -1992,7 +2198,172 @@ function toast(msg, type = 'info') {
   }, 3000);
 }
 
-// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+// ── GDrive Setup ──────────────────────────────────────────────────────────────
+let gdsAuthUrl = null;
+let gdsCurrentStep = 1;
+
+function openGDriveSetup() {
+  gdsCurrentStep = 1;
+  gdsAuthUrl = null;
+  gdsReset();
+  el('gdrive-modal').classList.add('open');
+}
+
+function closeGDriveSetup() {
+  el('gdrive-modal').classList.remove('open');
+  // Cancel any active auth process
+  fetch('/api/gdrive/cancel', { method: 'POST' }).catch(() => {});
+}
+
+function gdsReset() {
+  // Panels
+  [1,2,3].forEach(i => {
+    el(`gdsp-${i}`).classList.toggle('visible', i === 1);
+    const step = el(`gds-step-${i}`);
+    step.classList.remove('active', 'done');
+    if (i === 1) step.classList.add('active');
+    el(`gds-circle-${i}`).textContent = i;
+  });
+  // Buttons
+  el('gds-btn-next').textContent = 'Start Setup →';
+  el('gds-btn-next').disabled = false;
+  el('gds-btn-next').style.display = '';
+  el('gds-btn-cancel-setup').textContent = 'Cancel';
+  // Auth panel resets
+  el('gds-auth-btn').style.display = 'none';
+  el('gds-auth-hint').style.display = 'none';
+  el('gds-error-box').style.display = 'none';
+  el('gds-spinner').style.display = '';
+  el('gds-status-msg').textContent = 'Starting authorization…';
+}
+
+function gdsSetStep(n) {
+  gdsCurrentStep = n;
+  [1,2,3].forEach(i => {
+    const step = el(`gds-step-${i}`);
+    step.classList.remove('active', 'done');
+    if (i < n)  step.classList.add('done');
+    if (i === n) step.classList.add('active');
+    if (i < n) el(`gds-circle-${i}`).textContent = '✓';
+  });
+  [1,2,3].forEach(i => {
+    el(`gdsp-${i}`).classList.toggle('visible', i === n);
+  });
+}
+
+async function gdsNext() {
+  if (gdsCurrentStep === 1) {
+    // Move to step 2, start auth flow
+    gdsSetStep(2);
+    el('gds-btn-next').style.display = 'none';
+    el('gds-btn-cancel-setup').textContent = 'Cancel';
+    await gdsStartAuth();
+  } else if (gdsCurrentStep === 3) {
+    closeGDriveSetup();
+  }
+}
+
+async function gdsStartAuth() {
+  const remoteName = el('gds-name').value.trim() || 'gdrive';
+  const scope      = el('gds-scope').value;
+
+  el('gds-status-msg').textContent = 'Starting rclone authorization…';
+  el('gds-error-box').style.display = 'none';
+
+  try {
+    const response = await fetch('/api/gdrive/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ remoteName, scope })
+    });
+
+    const reader   = response.body.getReader();
+    const decoder  = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop();
+
+      for (const chunk of parts) {
+        const lines = chunk.split('\n');
+        let event = 'message', data = '';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) event = line.slice(7).trim();
+          if (line.startsWith('data: '))  data  = line.slice(6).trim();
+        }
+        if (!data) continue;
+        try { gdsHandleSSE(event, JSON.parse(data)); } catch {}
+      }
+    }
+  } catch (err) {
+    gdsShowError('Connection error: ' + err.message);
+  }
+}
+
+function gdsHandleSSE(event, data) {
+  switch (event) {
+    case 'status':
+      el('gds-status-msg').textContent = data.msg || '';
+      break;
+
+    case 'url':
+      gdsAuthUrl = data.url;
+      el('gds-status-msg').textContent = 'Waiting for Google authorization…';
+      el('gds-spinner').style.display = '';
+      // Show the button as fallback (browser may have auto-opened)
+      setTimeout(() => {
+        if (gdsCurrentStep === 2) {
+          el('gds-auth-btn').style.display = '';
+          el('gds-auth-hint').style.display = '';
+        }
+      }, 2000);
+      logLine('GDrive auth: opened browser → ' + data.url, 'info');
+      break;
+
+    case 'done':
+      el('gds-spinner').style.display = 'none';
+      el('gds-auth-btn').style.display = 'none';
+      el('gds-auth-hint').style.display = 'none';
+      gdsSetStep(3);
+      el('gds-success-msg').textContent = `Remote "${data.remoteName}" is ready.`;
+      el('gds-btn-next').textContent = 'Done ✓';
+      el('gds-btn-next').style.display = '';
+      el('gds-btn-cancel-setup').style.display = 'none';
+      // Refresh UI
+      el('cfg-remote').value = data.remoteName;
+      updateDestLabel();
+      checkStatus();
+      loadRemotes();
+      toast('Google Drive connected! 🎉', 'ok');
+      logLine(`GDrive remote "${data.remoteName}" configured successfully`, 'ok');
+      break;
+
+    case 'error':
+      el('gds-spinner').style.display = 'none';
+      gdsShowError(data.msg);
+      break;
+  }
+}
+
+function gdsShowError(msg) {
+  const box = el('gds-error-box');
+  box.style.display = '';
+  box.innerHTML = `⚠ ${escHtml(msg)}<br><span style="font-size:11px;opacity:0.7;margin-top:4px;display:block;">Make sure rclone is installed: <code style="color:var(--accent)">brew install rclone</code></span>`;
+  el('gds-btn-next').style.display = '';
+  el('gds-btn-next').textContent = '↺ Try Again';
+  el('gds-btn-next').onclick = () => { gdsReset(); };
+  el('gds-btn-cancel-setup').style.display = '';
+}
+
+function openAuthUrl() {
+  if (gdsAuthUrl) window.open(gdsAuthUrl, '_blank');
+}
+
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.key === 's' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveConfig(); }
